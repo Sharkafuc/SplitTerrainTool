@@ -5,7 +5,7 @@ using UnityEngine;
 
 public class TerrainSplitTool : EditorWindow
 {
-    [MenuItem("Terrain/Slice Terrain")]
+    [MenuItem("Tools/场景/地形切割工具")]
     public static void ShowWindow()
     {
         EditorWindow window = EditorWindow.GetWindow(typeof(TerrainSplitTool), false, "TerrainSplitTool");
@@ -37,7 +37,7 @@ public class TerrainSplitTool : EditorWindow
 	public void OnEnable()
 	{
 
-		minSize = new Vector2(660, 370);
+		minSize = new Vector2(660, 470);
 		if (Application.isPlaying)
 			isPlaying = true;
 		else
@@ -113,7 +113,7 @@ public class TerrainSplitTool : EditorWindow
 		if (!isPlaying)
 		{
 			splitScript = SplitTerrain.getInstance();
-			GUILayout.Label("Configuration", EditorStyles.boldLabel);
+			GUILayout.Label("", EditorStyles.boldLabel);
 
 			EditorGUILayout.LabelField("Hover over the field labels (left of each field) or buttons to view more detailed information about each field.");
 			EditorGUILayout.LabelField("");
@@ -158,11 +158,12 @@ public class TerrainSplitTool : EditorWindow
 					{
 						CreateTerrainData();
 						CopyTerrainData();
-						////Optional step
-						//if (blend)
-						//	BlendEdges();
-						//SetNeighbors();
-						this.Close();
+                        ////Optional step
+                        //if (blend)
+                        //	BlendEdges();
+                        //SetNeighbors();
+                        EditorUtility.ClearProgressBar();
+                        this.Close();
 					}
 				}
 				else
@@ -206,6 +207,8 @@ public class TerrainSplitTool : EditorWindow
 		splitScript.oldPosX = baseTerrain.GetPosition().y;
 		splitScript.oldPosX = baseTerrain.GetPosition().z;
 
+        splitScript.oldMaterial = baseTerrain.materialTemplate;
+
 		splitScript.newHeightMapResolution = ((baseData.heightmapResolution - 1) / splitSize) + 1;
 		splitScript.newEvenHeightMapResolution = splitScript.newHeightMapResolution - 1;
 
@@ -226,7 +229,7 @@ public class TerrainSplitTool : EditorWindow
 		splitScript.castShadows = baseTerrain.shadowCastingMode;
 		splitScript.editorRenderFlags = baseTerrain.editorRenderFlags;
 
-		splitScript.splatProtos = baseData.splatPrototypes;
+		splitScript.splatProtos = baseData.terrainLayers;
 		splitScript.detailProtos = baseData.detailPrototypes;
 		splitScript.treeProtos = baseData.treePrototypes;
 		splitScript.treeInsts = baseData.treeInstances;
@@ -335,12 +338,13 @@ public class TerrainSplitTool : EditorWindow
 		{
 			for (int x = 0; x < terrainX; x++)
 			{
-				splitScript.CopyTerrainData(terrainZ, terrainX,arrayPos, terrainSavePath);
+				splitScript.CopyTerrainData(y, x,arrayPos, terrainSavePath);
 				arrayPos++;
 				progress += progressScale;
 				EditorUtility.DisplayProgressBar("Progress", "Generating Terrains", progress);
 			}
 		}
-				
+
+        splitScript.DealwithCopyTrees();
 	}
 }

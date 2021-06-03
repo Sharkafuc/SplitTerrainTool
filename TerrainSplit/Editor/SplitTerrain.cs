@@ -6,14 +6,14 @@ using UnityEngine.Rendering;
 
 public class SplitTerrain
 {
-    //�༭������
+    //输入
     public Terrain baseTerrain;
     public SplitSize splitSize = SplitSize._2x2;
     public int resolutionPerPatch = 8;
 	public bool copyAllDetails = true;
 	public bool copyAllTrees = true;
-	//����
-
+	
+    //数据
 	public TerrainData baseData;
     public string baseFileName;
     public int baseSize;
@@ -25,6 +25,7 @@ public class SplitTerrain
     public float oldPosX;
     public float oldPosY;
     public float oldPosZ;
+    public Material oldMaterial;
     public float grassStrength;
 	public float grassAmount;
 	public float grassSpeed;
@@ -54,7 +55,7 @@ public class SplitTerrain
     public GameObject[] terrainGameObjects;
     public Terrain[] terrains;
     public TerrainData[] terrain_datas;
-    public SplatPrototype[] splatProtos;
+    public TerrainLayer[] splatProtos;
 	public DetailPrototype[] detailProtos;
 	public TreePrototype[] treeProtos;
 	public TreeInstance[] treeInsts;
@@ -70,20 +71,23 @@ public class SplitTerrain
     {
 		TerrainData td = AssetDatabase.LoadAssetAtPath<TerrainData>(terrainSavePath + "/" + baseTerrain.name + "_Data_" + (zIndex + 1) + "_" + (xIndex + 1) + ".asset");
 		terrainGameObjects[arrayPos] = Terrain.CreateTerrainGameObject(td);
-		terrainGameObjects[arrayPos].name = baseTerrain.name + "_Slice_" + (zIndex + 1) + "_" + (xIndex + 1);
+		terrainGameObjects[arrayPos].name = baseTerrain.name + "_Split_" + (zIndex + 1) + "_" + (xIndex + 1);
 		terrains[arrayPos] = terrainGameObjects[arrayPos].GetComponent<Terrain>();
+        terrains[arrayPos].materialTemplate = oldMaterial;
+        //lightmap
+        terrains[arrayPos].lightmapScaleOffset = new Vector4(1f/ splitTerrainsZ, 1f/ splitTerrainsX, 1f / splitTerrainsX * (xIndex), 1f / splitTerrainsZ * (zIndex));
 
-		terrain_datas[arrayPos] = terrains[arrayPos].terrainData;
+        terrain_datas[arrayPos] = td;
 		terrain_datas[arrayPos].heightmapResolution = newEvenHeightMapResolution;
 		terrain_datas[arrayPos].alphamapResolution = newAlphaMapResolution;
 		terrain_datas[arrayPos].baseMapResolution = newBaseMapResolution;
 		terrain_datas[arrayPos].SetDetailResolution(newDetailResolution, resolutionPerPatch);
 		terrain_datas[arrayPos].size =new Vector3(newWidth, oldSizeY, newLength);
 
-		//Splat prototypes
-		terrain_datas[arrayPos].splatPrototypes = td.splatPrototypes;
+        //Splat prototypes
+        terrain_datas[arrayPos].terrainLayers = baseData.terrainLayers;
 
-		layers = baseData.GetSupportedLayers(xIndex * terrain_datas[arrayPos].detailWidth - 1, zIndex * terrain_datas[arrayPos].detailHeight - 1, terrain_datas[arrayPos].detailWidth, terrain_datas[arrayPos].detailHeight);
+        layers = baseData.GetSupportedLayers(xIndex * terrain_datas[arrayPos].detailWidth - 1, zIndex * terrain_datas[arrayPos].detailHeight - 1, terrain_datas[arrayPos].detailWidth, terrain_datas[arrayPos].detailHeight);
 		int layerLength = layers.Length;
 
 		if (copyAllDetails)
@@ -112,95 +116,102 @@ public class SplitTerrain
 		terrain_datas[arrayPos].wavingGrassTint = grassTint;
 
 		terrain_datas[arrayPos].SetHeights(0, 0, baseData.GetHeights(xIndex * (terrain_datas[arrayPos].heightmapResolution - 1), zIndex * (terrain_datas[arrayPos].heightmapResolution - 1), terrain_datas[arrayPos].heightmapResolution, terrain_datas[arrayPos].heightmapResolution));
-		float[,,] map = new float[newAlphaMapResolution, newAlphaMapResolution, splatProtos.Length];
-		map = baseData.GetAlphamaps(xIndex * terrain_datas[arrayPos].alphamapWidth, zIndex * terrain_datas[arrayPos].alphamapHeight, terrain_datas[arrayPos].alphamapWidth, terrain_datas[arrayPos].alphamapHeight);
-		terrain_datas[arrayPos].SetAlphamaps(0, 0, map);
 
-		terrainGameObjects[arrayPos].GetComponent<TerrainCollider>().terrainData = terrain_datas[arrayPos];
+        float[,,] map = new float[newAlphaMapResolution, newAlphaMapResolution, splatProtos.Length];
+        map = baseData.GetAlphamaps(xIndex * terrain_datas[arrayPos].alphamapWidth, zIndex * terrain_datas[arrayPos].alphamapHeight, terrain_datas[arrayPos].alphamapWidth, terrain_datas[arrayPos].alphamapHeight);
+        terrain_datas[arrayPos].SetAlphamaps(0, 0, map);
+
+        terrainGameObjects[arrayPos].GetComponent<TerrainCollider>().terrainData = terrain_datas[arrayPos];
 
 		terrainGameObjects[arrayPos].transform.position = new Vector3(xIndex * newWidth + oldPosX, oldPosY, zIndex * newLength + oldPosZ);
 
-		for (int y = 0; y < terrains.Length; y++)
-		{
-			terrains[y].treeDistance = treeDistance;
-			terrains[y].treeBillboardDistance = treeBillboardDistance;
-			terrains[y].treeCrossFadeLength = treeCrossFadeLength;
-			terrains[y].treeMaximumFullLODCount = treeMaximumFullLODCount;
-			terrains[y].detailObjectDistance = detailObjectDistance;
-			terrains[y].detailObjectDensity = detailObjectDensity;
-			terrains[y].heightmapPixelError = heightmapPixelError;
-			terrains[y].heightmapMaximumLOD = heightmapMaximumLOD;
-			terrains[y].basemapDistance = basemapDistance;
-			terrains[y].lightmapIndex = lightmapIndex;
-			terrains[y].shadowCastingMode = castShadows;
-			terrains[y].editorRenderFlags = editorRenderFlags;
-		}
-		//Only execute these lines of code if copyAllTrees is false
-		int[,] treeTypes = new int[splitTerrainsX * splitTerrainsZ, treeProtos.Length];
-		if (!copyAllTrees)
-		{
-			//Loop through every single tree
-			for (int i = 0; i < treeInsts.Length; i++)
-			{
-				Vector3 origPos2 = Vector3.Scale(new Vector3(oldSizeX, 1, oldSizeZ), new Vector3(treeInsts[i].position.x, treeInsts[i].position.y, treeInsts[i].position.z));
+    }
 
-				int column2 = Mathf.FloorToInt(origPos2.x / newWidth);
-				int row2 = Mathf.FloorToInt(origPos2.z / newLength);
+    public void DealwithCopyTrees()
+    {
+        for (int y = 0; y < terrains.Length; y++)
+        {
+            terrains[y].treeDistance = treeDistance;
+            terrains[y].treeBillboardDistance = treeBillboardDistance;
+            terrains[y].treeCrossFadeLength = treeCrossFadeLength;
+            terrains[y].treeMaximumFullLODCount = treeMaximumFullLODCount;
+            terrains[y].detailObjectDistance = detailObjectDistance;
+            terrains[y].detailObjectDensity = detailObjectDensity;
+            terrains[y].heightmapPixelError = heightmapPixelError;
+            terrains[y].heightmapMaximumLOD = heightmapMaximumLOD;
+            terrains[y].basemapDistance = basemapDistance;
+            terrains[y].lightmapIndex = lightmapIndex;
+            terrains[y].shadowCastingMode = castShadows;
+            terrains[y].editorRenderFlags = editorRenderFlags;
+        }
+        //Only execute these lines of code if copyAllTrees is false
+        int[,] treeTypes = new int[splitTerrainsX * splitTerrainsZ, treeProtos.Length];
+        if (!copyAllTrees)
+        {
+            //Loop through every single tree
+            for (int i = 0; i < treeInsts.Length; i++)
+            {
+                Vector3 origPos2 = Vector3.Scale(new Vector3(oldSizeX, 1, oldSizeZ), new Vector3(treeInsts[i].position.x, treeInsts[i].position.y, treeInsts[i].position.z));
 
-				treeTypes[(row2 * splitTerrainsX) + column2, treeInsts[i].prototypeIndex] = 1;
-			}
+                int column2 = Mathf.FloorToInt(origPos2.x / newWidth);
+                int row2 = Mathf.FloorToInt(origPos2.z / newLength);
 
-			for (int i = 0; i < splitTerrainsX * splitTerrainsZ; i++)
-			{
-				int numOfPrototypes = 0;
-				for (int y = 0; y < treeProtos.Length; y++)
-					if (treeTypes[i, y] == 1)
-						numOfPrototypes++;
-				//else --not necessary I think
-				//treeTypes[i,y] = treeProtos.Length; //replace the 0 at this spot with the length of the treeProtos array. Later, if we find this spot has this value,
-				//we'll know that this prototype is not found on this terrain. We will need to know this.
-				TreePrototype[] tempPrototypes = new TreePrototype[numOfPrototypes];
-				int tempIndex = 0;
-				for (int y = 0; y < treeProtos.Length; y++)
-					if (treeTypes[i, y] == 1)
-					{
-						tempPrototypes[tempIndex] = treeProtos[y];
-						//In addition, replace the value at tempTypes[i,y] with the index of where that prototype is stored for that terrain, like this
-						treeTypes[i, y] = tempIndex;
-						tempIndex++;
-					}
+                treeTypes[(row2 * splitTerrainsX) + column2, treeInsts[i].prototypeIndex] = 1;
+            }
 
-				terrain_datas[i].treePrototypes = tempPrototypes;
-			}
-		}
+            for (int i = 0; i < splitTerrainsX * splitTerrainsZ; i++)
+            {
+                int numOfPrototypes = 0;
+                for (int y = 0; y < treeProtos.Length; y++)
+                    if (treeTypes[i, y] == 1)
+                        numOfPrototypes++;
+                //else --not necessary I think
+                //treeTypes[i,y] = treeProtos.Length; //replace the 0 at this spot with the length of the treeProtos array. Later, if we find this spot has this value,
+                //we'll know that this prototype is not found on this terrain. We will need to know this.
+                TreePrototype[] tempPrototypes = new TreePrototype[numOfPrototypes];
+                int tempIndex = 0;
+                for (int y = 0; y < treeProtos.Length; y++)
+                    if (treeTypes[i, y] == 1)
+                    {
+                        tempPrototypes[tempIndex] = treeProtos[y];
+                        //In addition, replace the value at tempTypes[i,y] with the index of where that prototype is stored for that terrain, like this
+                        treeTypes[i, y] = tempIndex;
+                        tempIndex++;
+                    }
 
-		for (int i = 0; i < treeInsts.Length; i++)
-		{
-			Vector3 origPos = Vector3.Scale(new Vector3(oldSizeX, 1, oldSizeZ), new Vector3(treeInsts[i].position.x, treeInsts[i].position.y, treeInsts[i].position.z));
-			int column = Mathf.FloorToInt(origPos.x / newWidth);
-			int row = Mathf.FloorToInt(origPos.z / newLength);
+                terrain_datas[i].treePrototypes = tempPrototypes;
+            }
+        }
 
-			Vector3 tempVect = new Vector3((origPos.x - (newWidth * column)) / newWidth, origPos.y, (origPos.z - (newLength * row)) / newLength);
-			TreeInstance tempTree = new TreeInstance();
+        for (int i = 0; i < treeInsts.Length; i++)
+        {
+            Vector3 origPos = Vector3.Scale(new Vector3(oldSizeX, 1, oldSizeZ), new Vector3(treeInsts[i].position.x, treeInsts[i].position.y, treeInsts[i].position.z));
+            int column = Mathf.FloorToInt(origPos.x / newWidth);
+            int row = Mathf.FloorToInt(origPos.z / newLength);
 
-			tempTree.position = tempVect;
-			tempTree.widthScale = treeInsts[i].widthScale;
-			tempTree.heightScale = treeInsts[i].heightScale;
-			tempTree.color = treeInsts[i].color;
-			tempTree.lightmapColor = treeInsts[i].lightmapColor;
+            Vector3 tempVect = new Vector3((origPos.x - (newWidth * column)) / newWidth, origPos.y, (origPos.z - (newLength * row)) / newLength);
+            TreeInstance tempTree = new TreeInstance();
 
-			if (copyAllTrees)
-				tempTree.prototypeIndex = treeInsts[i].prototypeIndex;
-			else
-				tempTree.prototypeIndex = treeTypes[(row * splitTerrainsX) + column, treeInsts[i].prototypeIndex];
+            tempTree.position = tempVect;
+            tempTree.widthScale = treeInsts[i].widthScale;
+            tempTree.heightScale = treeInsts[i].heightScale;
+            tempTree.color = treeInsts[i].color;
+            tempTree.lightmapColor = treeInsts[i].lightmapColor;
 
-			terrains[(row * splitTerrainsX) + column].AddTreeInstance(tempTree);
+            if (copyAllTrees)
+                tempTree.prototypeIndex = treeInsts[i].prototypeIndex;
+            else
+                tempTree.prototypeIndex = treeTypes[(row * splitTerrainsX) + column, treeInsts[i].prototypeIndex];
 
-		}
-		//refresh prototypes
-		for (int i = 0; i < splitTerrainsX * splitTerrainsZ; i++)
-			terrain_datas[i].RefreshPrototypes();
-		}
+            terrains[(row * splitTerrainsX) + column].AddTreeInstance(tempTree);
+
+        }
+        //refresh prototypes
+        for (int i = 0; i < splitTerrainsX * splitTerrainsZ; i++)
+        {
+            terrain_datas[i].RefreshPrototypes();
+        }
+    }
 }
 
 public enum SplitSize
